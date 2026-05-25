@@ -1,10 +1,10 @@
+use clap::Parser;
+use cli::{Args, ModeArg};
+use gen::{generate_memorable, generate_random, MemorableConfig, RandomConfig};
+
 pub mod cli;
 pub mod gen;
 pub mod tui;
-
-use cli::{Args, ModeArg};
-use clap::Parser;
-use gen::{generate_memorable, generate_random, MemorableConfig, RandomConfig};
 
 fn main() {
     let args = Args::parse();

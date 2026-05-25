@@ -30,6 +30,7 @@ struct App {
     separator_custom: Option<String>,
     editing_separator: bool,
     clipboard_msg: Option<String>,
+    clipboard: Option<arboard::Clipboard>,
 }
 
 enum Focus {
@@ -51,6 +52,7 @@ impl App {
             separator_custom: None,
             editing_separator: false,
             clipboard_msg: None,
+            clipboard: None,
         }
     }
 
@@ -76,18 +78,20 @@ impl App {
     fn copy_to_clipboard(&mut self) {
         if let Some(ref pw) = self.password {
             let text = pw.as_str().to_string();
-            match arboard::Clipboard::new() {
-                Ok(mut cb) => match cb.set_text(&text) {
+            if self.clipboard.is_none() {
+                self.clipboard = arboard::Clipboard::new().ok();
+            }
+            if let Some(ref mut cb) = self.clipboard {
+                match cb.set_text(&text) {
                     Ok(()) => {
                         self.clipboard_msg = Some("Copied! Clears in 15s".into());
                     }
                     Err(e) => {
                         self.clipboard_msg = Some(format!("Copy failed: {e}"));
                     }
-                },
-                Err(e) => {
-                    self.clipboard_msg = Some(format!("Clipboard error: {e}"));
                 }
+            } else {
+                self.clipboard_msg = Some("Clipboard unavailable".into());
             }
         }
     }
@@ -182,7 +186,7 @@ fn run_app(
 
         if let Some(timer) = clipboard_clear_timer {
             if timer.elapsed() >= Duration::from_secs(15) {
-                if let Ok(mut cb) = arboard::Clipboard::new() {
+                if let Some(ref mut cb) = app.clipboard {
                     let _ = cb.set_text("");
                 }
                 app.clipboard_msg = None;
@@ -468,13 +472,7 @@ fn draw_password_panel(f: &mut Frame, app: &App, area: Rect) {
 
 fn draw_strength_panel(f: &mut Frame, app: &App, area: Rect) {
     let label = strength_label(app.entropy);
-    let color = match label {
-        "Weak" => RED,
-        "Fair" => YELLOW,
-        "Good" => GREEN,
-        "Strong" => GREEN,
-        _ => DIM,
-    };
+    let color = entropy_color(app.entropy);
 
     let pct = (app.entropy / 128.0 * 100.0).clamp(0.0, 100.0) as u16;
 
@@ -622,7 +620,29 @@ const BORDER: Color = Color::Rgb(88, 91, 112);
 const TEXT: Color = Color::Rgb(205, 214, 244);
 const DIM: Color = Color::Rgb(166, 173, 200);
 const GREEN: Color = Color::Rgb(166, 227, 161);
-const RED: Color = Color::Rgb(243, 139, 168);
-const YELLOW: Color = Color::Rgb(249, 226, 175);
 const ORANGE: Color = Color::Rgb(250, 179, 135);
 const BLUE: Color = Color::Rgb(137, 180, 250);
+
+// Smooth entropy color: red(0) → orange(30) → yellow(50) → green(80+)
+fn entropy_color(entropy: f64) -> Color {
+    let (r1, g1, b1, r2, g2, b2, t) = if entropy < 30.0 {
+        // Red → Orange
+        let t = (entropy / 30.0).clamp(0.0, 1.0);
+        (243, 139, 168, 250, 179, 135, t)
+    } else if entropy < 50.0 {
+        // Orange → Yellow
+        let t = ((entropy - 30.0) / 20.0).clamp(0.0, 1.0);
+        (250, 179, 135, 249, 226, 175, t)
+    } else if entropy < 80.0 {
+        // Yellow → Green
+        let t = ((entropy - 50.0) / 30.0).clamp(0.0, 1.0);
+        (249, 226, 175, 166, 227, 161, t)
+    } else {
+        return GREEN;
+    };
+    Color::Rgb(
+        (r1 as f64 + (r2 as f64 - r1 as f64) * t) as u8,
+        (g1 as f64 + (g2 as f64 - g1 as f64) * t) as u8,
+        (b1 as f64 + (b2 as f64 - b1 as f64) * t) as u8,
+    )
+}
