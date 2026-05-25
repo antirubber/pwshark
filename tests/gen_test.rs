@@ -1,4 +1,4 @@
-use pwshark::gen::{calculate_entropy, generate_memorable, generate_random, separator_presets,
+use pwshark::gen::{calculate_entropy, generate_memorable, generate_random,
     strength_label, MemorableConfig, RandomConfig};
 
 fn make_rng() -> impl rand::Rng {
@@ -109,4 +109,22 @@ fn password_text_survives_to_string_copy() {
     let copy = original.clone();
     drop(pw);
     assert_eq!(original, copy);
+}
+
+#[test]
+fn truncate_word_keeps_first_vowel_and_consonants() {
+    use pwshark::gen::truncate_word;
+    assert_eq!(truncate_word("cat"), "cat");
+    assert_eq!(truncate_word("seemingly"), "semng");
+    assert_eq!(truncate_word("abdominal"), "abdmn");
+    assert_eq!(truncate_word("enrage"), "enrg");
+}
+
+#[test]
+fn truncate_word_handles_char_boundary() {
+    use pwshark::gen::truncate_word;
+    // Unicode word where .len() != .chars().count()
+    let cafe = "caf\u{00e9}"; // "café" — 4 chars, 5 bytes
+    let truncated = truncate_word(cafe);
+    assert!(truncated.chars().count() <= 5);
 }

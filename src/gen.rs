@@ -128,15 +128,16 @@ pub fn generate_memorable(rng: &mut impl Rng, cfg: &MemorableConfig) -> Password
     Password(password)
 }
 
-fn truncate_word(word: &str) -> String {
+pub fn truncate_word(word: &str) -> String {
     const MAX: usize = 5;
-    if word.len() <= MAX {
+    let chars: Vec<char> = word.chars().collect();
+    if chars.len() <= MAX {
         return word.to_string();
     }
     let vowels = "aeiouAEIOU";
     let mut result = String::new();
     let mut first_vowel = false;
-    for ch in word.chars() {
+    for ch in chars {
         if result.len() >= MAX {
             break;
         }
