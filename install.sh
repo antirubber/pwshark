@@ -3,10 +3,7 @@ set -euo pipefail
 
 REPO="https://github.com/antirubber/pwshark.git"
 INSTALL_DIR="${HOME}/.local/bin"
-TMPDIR=$(mktemp -d)
-
-cleanup() { rm -rf "$TMPDIR"; }
-trap cleanup EXIT
+SRC_DIR="${HOME}/.local/share/pwshark"
 
 echo "pwshark installer"
 
@@ -24,10 +21,17 @@ if command -v apt &>/dev/null; then
         echo "Could not install deps automatically. Build may fail — install libxcb1-dev libx11-dev libxkbcommon-dev manually."
 fi
 
-# Clone and build
-echo "Cloning pwshark..."
-git clone "$REPO" "$TMPDIR/pwshark"
-cd "$TMPDIR/pwshark"
+# Clone or update
+if [ -d "$SRC_DIR/.git" ]; then
+    echo "Updating pwshark..."
+    cd "$SRC_DIR"
+    git pull --ff-only
+else
+    echo "Cloning pwshark..."
+    rm -rf "$SRC_DIR"
+    git clone "$REPO" "$SRC_DIR"
+    cd "$SRC_DIR"
+fi
 
 echo "Building release binary..."
 cargo build --release
