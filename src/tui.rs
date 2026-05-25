@@ -75,8 +75,9 @@ impl App {
 
     fn copy_to_clipboard(&mut self) {
         if let Some(ref pw) = self.password {
+            let text = pw.as_str().to_string();
             match arboard::Clipboard::new() {
-                Ok(mut cb) => match cb.set_text(pw.as_str()) {
+                Ok(mut cb) => match cb.set_text(&text) {
                     Ok(()) => {
                         self.clipboard_msg = Some("Copied! Clears in 15s".into());
                     }
@@ -343,6 +344,9 @@ fn draw(f: &mut Frame, app: &App) {
 
     draw_left(f, app, left_area);
     draw_right(f, app, right_area);
+
+    // Keybinding hints at the bottom of the screen
+    draw_hints(f, size);
 }
 
 fn draw_left(f: &mut Frame, app: &App, area: Rect) {
@@ -399,7 +403,7 @@ fn draw_left(f: &mut Frame, app: &App, area: Rect) {
 fn draw_right(f: &mut Frame, app: &App, area: Rect) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Percentage(60), Constraint::Percentage(40)])
+        .constraints([Constraint::Min(5), Constraint::Length(5)])
         .split(area);
 
     draw_password_panel(f, app, chunks[0]);
@@ -417,6 +421,8 @@ fn draw_password_panel(f: &mut Frame, app: &App, area: Rect) {
 
     let inner = block.inner(area);
     f.render_widget(block, area);
+
+    let mut lines: Vec<Line> = Vec::new();
 
     if let Some(ref pw) = app.password {
         let spans: Vec<Span> = pw
@@ -438,22 +444,26 @@ fn draw_password_panel(f: &mut Frame, app: &App, area: Rect) {
             })
             .collect();
 
-        let line = Line::from(spans);
-        let para = Paragraph::new(vec![Line::raw(""), line]).wrap(Wrap { trim: false });
-        f.render_widget(para, inner);
+        lines.push(Line::raw(""));
+        lines.push(Line::from(spans));
+        lines.push(Line::raw(""));
+
+        if let Some(ref msg) = app.clipboard_msg {
+            lines.push(Line::from(Span::styled(
+                format!("  {msg}"),
+                Style::default().fg(GREEN),
+            )));
+        }
+
+        let pw_len = pw.as_str().len();
+        lines.push(Line::from(Span::styled(
+            format!("  {} chars", pw_len),
+            Style::default().fg(DIM),
+        )));
     }
 
-    if let Some(ref msg) = app.clipboard_msg {
-        let hint = Line::from(Span::styled(
-            format!("  {msg}"),
-            Style::default().fg(GREEN),
-        ));
-        let para = Paragraph::new(hint);
-        f.render_widget(para, Rect {
-            y: area.bottom().saturating_sub(1),
-            ..inner
-        });
-    }
+    let para = Paragraph::new(lines).wrap(Wrap { trim: false });
+    f.render_widget(para, inner);
 }
 
 fn draw_strength_panel(f: &mut Frame, app: &App, area: Rect) {
@@ -479,28 +489,66 @@ fn draw_strength_panel(f: &mut Frame, app: &App, area: Rect) {
     let inner = block.inner(area);
     f.render_widget(block, area);
 
-    let gauge = Gauge::default()
-        .gauge_style(Style::default().fg(color))
-        .percent(pct)
-        .label(format!("{label} — {entropy:.1} bits", entropy = app.entropy));
-    f.render_widget(gauge, inner);
-
-    if let Some(ref pw) = app.password {
-        let info = Line::from(Span::styled(
-            format!("  {} chars", pw.as_str().len()),
+    // Compact: label on first line, thin gauge on second
+    let label_line = Line::from(vec![
+        Span::styled(
+            format!("  {label}"),
+            Style::default().fg(color).add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(
+            format!("  —  {:.1} bits", app.entropy),
             Style::default().fg(DIM),
-        ));
-        let para = Paragraph::new(info);
-        f.render_widget(
-            para,
-            Rect {
-                y: inner.bottom().saturating_sub(1),
-                x: inner.x,
-                width: inner.width,
-                height: 1,
-            },
-        );
+        ),
+    ]);
+
+    let gauge_height = if inner.height > 2 { 1 } else { 0 };
+
+    let content_chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(1),
+            Constraint::Length(gauge_height),
+        ])
+        .split(inner);
+
+    let label_para = Paragraph::new(label_line);
+    f.render_widget(label_para, content_chunks[0]);
+
+    if gauge_height > 0 {
+        let gauge = Gauge::default()
+            .gauge_style(Style::default().fg(color).bg(Color::Rgb(30, 30, 46)))
+            .percent(pct)
+            .label("");
+        f.render_widget(gauge, content_chunks[1]);
     }
+}
+
+fn draw_hints(f: &mut Frame, area: Rect) {
+    let hints = Line::from(vec![
+        Span::styled(" Enter", Style::default().fg(GREEN)),
+        Span::styled(" Generate  ", Style::default().fg(DIM)),
+        Span::styled(" y", Style::default().fg(GREEN)),
+        Span::styled(" Copy  ", Style::default().fg(DIM)),
+        Span::styled(" Tab", Style::default().fg(GREEN)),
+        Span::styled(" Mode  ", Style::default().fg(DIM)),
+        Span::styled(" ↑↓", Style::default().fg(GREEN)),
+        Span::styled(" Navigate  ", Style::default().fg(DIM)),
+        Span::styled(" ←→", Style::default().fg(GREEN)),
+        Span::styled(" Adjust  ", Style::default().fg(DIM)),
+        Span::styled(" q", Style::default().fg(GREEN)),
+        Span::styled(" Quit", Style::default().fg(DIM)),
+    ]);
+
+    let para = Paragraph::new(hints);
+    f.render_widget(
+        para,
+        Rect {
+            x: area.x + 1,
+            y: area.bottom().saturating_sub(1),
+            width: area.width.saturating_sub(2),
+            height: 1,
+        },
+    );
 }
 
 fn draw_random_options(app: &App) -> Vec<Line<'static>> {
