@@ -27,7 +27,13 @@ NIST-compliant password generator. btop-style TUI. Offline. Lightning fast.
 curl -fsSL https://raw.githubusercontent.com/antirubber/pwshark/main/install.sh | bash
 ```
 
-This installs Rust (via rustup) if needed, clones the repo, builds a release binary, and symlinks it to `~/.local/bin/pwshark`.
+This downloads a prebuilt static binary from the latest [GitHub release](https://github.com/antirubber/pwshark/releases) (verifying its SHA256) and installs it to `~/.local/bin/pwshark` — no Rust toolchain required. On an unsupported architecture or if the download fails, it falls back to building from source.
+
+Pin a specific version with `PWSHARK_VERSION`:
+
+```bash
+PWSHARK_VERSION=0.1.1 curl -fsSL https://raw.githubusercontent.com/antirubber/pwshark/main/install.sh | bash
+```
 
 ### Updating
 
@@ -35,7 +41,7 @@ This installs Rust (via rustup) if needed, clones the repo, builds a release bin
 pwshark update
 ```
 
-Re-runs the installer to pull and build the latest version from GitHub.
+Re-runs the installer, which downloads the latest release. It's a fast no-op when you're already up to date.
 
 ### From source
 
@@ -49,13 +55,14 @@ sudo cp target/release/pwshark /usr/local/bin/
 
 ### Dependencies
 
+The prebuilt binary is fully static and needs **no runtime dependencies** — clipboard support uses a pure-Rust X11 backend that talks to the X server over a socket. The dependencies below apply only to a **source build** (the installer fallback or `cargo build`):
+
 | What | Why | Installed by |
 |------|-----|-------------|
 | Rust | Compile from source | rustup |
-| x11/xcb libs | Clipboard support (arboard) | system packages |
-| libxcb, libx11-dev | Clipboard on Linux | `apt install libxcb1-dev libx11-dev` |
+| libxcb1-dev, libx11-dev, libxkbcommon-dev | Build arboard (clipboard) on Linux | `apt install ...` |
 
-> **Note:** On Debian/Ubuntu, install clipboard deps first:
+> **Note:** When building from source on Debian/Ubuntu, install the build deps first:
 > ```bash
 > sudo apt install libxcb1-dev libx11-dev libxkbcommon-dev
 > ```
