@@ -222,7 +222,7 @@ main() {
   fi
 
   printf '\n'
-  ok "Done. Run '%s' to start." "$BIN"
+  ok "Done. Run '$BIN' to start."
 }
 
 main "$@"
