@@ -7,6 +7,10 @@ SRC_DIR="${HOME}/.local/share/pwshark"
 
 echo "pwshark installer"
 
+# Pick up an existing rustup install that isn't on this shell's PATH
+# (e.g. fish/zsh users whose interactive PATH lacks ~/.cargo/bin)
+[ -f "${HOME}/.cargo/env" ] && source "${HOME}/.cargo/env"
+
 # Check/install Rust
 if ! command -v cargo &>/dev/null; then
     echo "Rust not found. Installing via rustup..."
