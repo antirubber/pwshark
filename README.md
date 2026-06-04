@@ -29,6 +29,14 @@ curl -fsSL https://raw.githubusercontent.com/antirubber/pwshark/main/install.sh 
 
 This installs Rust (via rustup) if needed, clones the repo, builds a release binary, and symlinks it to `~/.local/bin/pwshark`.
 
+### Updating
+
+```bash
+pwshark update
+```
+
+Re-runs the installer to pull and build the latest version from GitHub.
+
 ### From source
 
 ```bash

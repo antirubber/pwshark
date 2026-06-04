@@ -1,8 +1,11 @@
-use clap::Parser;
+use clap::{Parser, Subcommand};
 
 #[derive(Parser)]
 #[command(name = "pwshark", about = "NIST-compliant password generator", version)]
 pub struct Args {
+    #[command(subcommand)]
+    pub command: Option<Command>,
+
     /// Output raw password to stdout (no TUI)
     #[arg(long)]
     pub stdout: bool,
@@ -95,6 +98,12 @@ impl Args {
     pub fn get_truncate(&self) -> bool {
         self.truncate && !self.no_truncate
     }
+}
+
+#[derive(Subcommand, Clone)]
+pub enum Command {
+    /// Update pwshark to the latest version from GitHub
+    Update,
 }
 
 #[derive(clap::ValueEnum, Clone, Debug)]

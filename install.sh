@@ -65,10 +65,13 @@ fi
 echo "Building release binary..."
 cargo build --release
 
-# Install
+# Install — atomic replace so a running pwshark can update itself (cp in place
+# would hit ETXTBSY "Text file busy" on the live binary; rename sidesteps it)
 mkdir -p "$INSTALL_DIR"
-cp target/release/pwshark "$INSTALL_DIR/pwshark"
-chmod +x "$INSTALL_DIR/pwshark"
+tmp="$INSTALL_DIR/.pwshark.new"
+cp target/release/pwshark "$tmp"
+chmod +x "$tmp"
+mv -f "$tmp" "$INSTALL_DIR/pwshark"
 
 echo ""
 echo "Installed pwshark to $INSTALL_DIR/pwshark"
