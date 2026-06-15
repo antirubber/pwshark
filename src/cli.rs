@@ -10,6 +10,14 @@ pub struct Args {
     #[arg(long)]
     pub stdout: bool,
 
+    /// Number of passwords to generate (stdout mode)
+    #[arg(long, default_value_t = 1)]
+    pub count: u16,
+
+    /// Emit JSON (stdout mode): array of {password, entropy, strength}
+    #[arg(long)]
+    pub json: bool,
+
     /// Generation mode
     #[arg(long, value_enum, default_value = "random")]
     pub mode: ModeArg,
@@ -54,6 +62,13 @@ pub struct Args {
     #[arg(long, hide = true)]
     pub no_symbols: bool,
 
+    /// Exclude visually ambiguous characters 0 O 1 l I (random mode)
+    #[arg(long, overrides_with("no_exclude_ambiguous"), default_value_t = false)]
+    pub exclude_ambiguous: bool,
+
+    #[arg(long, hide = true)]
+    pub no_exclude_ambiguous: bool,
+
     /// Random capitalization (memorable mode, default: true)
     #[arg(long, overrides_with("no_capitalize"), default_value_t = true)]
     pub capitalize: bool,
@@ -88,6 +103,9 @@ impl Args {
     }
     pub fn get_symbols(&self) -> bool {
         self.symbols && !self.no_symbols
+    }
+    pub fn get_exclude_ambiguous(&self) -> bool {
+        self.exclude_ambiguous && !self.no_exclude_ambiguous
     }
     pub fn get_capitalize(&self) -> bool {
         self.capitalize && !self.no_capitalize

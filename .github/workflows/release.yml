@@ -1,6 +1,6 @@
 name: release
 
-# Tag a release (e.g. `git tag v0.1.1 && git push --tags`) to build the static
+# Tag a release (e.g. `git tag v0.2.0 && git push --tags`) to build the static
 # binaries that install.sh downloads.
 on:
   push:
@@ -9,8 +9,25 @@ on:
 permissions:
   contents: write
 
+# Third-party actions are pinned to a full commit SHA (version in the trailing
+# comment) so a force-pushed tag on the action repo can't inject code into the
+# release pipeline. dtolnay/rust-toolchain derives its channel from the ref, so
+# when pinned to a SHA the channel must be passed explicitly via `toolchain:`.
 jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
+        with:
+          toolchain: stable
+      - name: Install cargo-audit
+        run: cargo install cargo-audit --locked
+      - name: Audit dependencies for RUSTSEC advisories
+        run: cargo audit
+
   build:
+    needs: audit
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -20,9 +37,10 @@ jobs:
           - target: aarch64-unknown-linux-musl
             asset: pwshark-linux-arm64
     steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
         with:
+          toolchain: stable
           targets: ${{ matrix.target }}
       - name: Install cross
         run: cargo install cross --locked
@@ -33,10 +51,23 @@ jobs:
           cp "target/${{ matrix.target }}/release/pwshark" "${{ matrix.asset }}"
           sha256sum "${{ matrix.asset }}" > "${{ matrix.asset }}.sha256"
       - name: Attach to release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
           files: |
             ${{ matrix.asset }}
             ${{ matrix.asset }}.sha256
           fail_on_unmatched_files: true
           generate_release_notes: true
+
+  # Publish install.sh as a release asset so `pwshark update` can fetch a pinned,
+  # tagged installer from releases/latest/download/install.sh instead of `main`.
+  installer:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - name: Attach install.sh to release
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
+        with:
+          files: install.sh
+          fail_on_unmatched_files: true

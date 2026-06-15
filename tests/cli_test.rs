@@ -13,3 +13,23 @@ fn no_subcommand_still_parses_flags() {
     assert!(args.command.is_none());
     assert!(args.stdout);
 }
+
+#[test]
+fn count_and_json_flags_parse() {
+    let args = Args::try_parse_from(["pwshark", "--stdout", "--count", "5", "--json"]).unwrap();
+    assert_eq!(args.count, 5);
+    assert!(args.json);
+}
+
+#[test]
+fn count_defaults_to_one() {
+    let args = Args::try_parse_from(["pwshark", "--stdout"]).unwrap();
+    assert_eq!(args.count, 1);
+    assert!(!args.json);
+}
+
+#[test]
+fn exclude_ambiguous_flag_parses() {
+    let args = Args::try_parse_from(["pwshark", "--exclude-ambiguous"]).unwrap();
+    assert!(args.get_exclude_ambiguous());
+}

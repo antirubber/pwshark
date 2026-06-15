@@ -1,13 +1,20 @@
 use clap::Parser;
 use cli::{Args, Command, ModeArg};
-use gen::{generate_memorable, generate_random, MemorableConfig, RandomConfig};
+use gen::{
+    calculate_entropy, generate_memorable, generate_random, memorable_entropy, strength_label,
+    MemorableConfig, RandomConfig,
+};
 
 pub mod cli;
 pub mod gen;
 pub mod tui;
 
+// Pinned to the latest *release* asset rather than the mutable `main` branch, so
+// `pwshark update` runs only installer code that shipped with a tagged release.
 const INSTALL_URL: &str =
-    "https://raw.githubusercontent.com/antirubber/pwshark/main/install.sh";
+    "https://github.com/antirubber/pwshark/releases/latest/download/install.sh";
+
+const MAX_COUNT: u16 = 1000;
 
 fn main() {
     let args = Args::parse();
@@ -41,27 +48,70 @@ fn run_update() {
 
 fn run_stdout(args: &Args) {
     let mut rng = rand::rng();
-    let password = match args.mode {
-        ModeArg::Random => generate_random(
-            &mut rng,
-            &RandomConfig {
-                length: args.length,
-                uppercase: args.get_uppercase(),
-                lowercase: args.get_lowercase(),
-                numbers: args.get_numbers(),
-                symbols: args.get_symbols(),
-            },
-        ),
-        ModeArg::Memorable => generate_memorable(
-            &mut rng,
-            &MemorableConfig {
-                word_count: args.words,
-                separator: args.separator.clone(),
-                capitalize: args.get_capitalize(),
-                add_numbers: args.get_add_numbers(),
-                truncate: args.get_truncate(),
-            },
-        ),
+    let count = args.count.clamp(1, MAX_COUNT);
+
+    let random_cfg = RandomConfig {
+        length: args.length,
+        uppercase: args.get_uppercase(),
+        lowercase: args.get_lowercase(),
+        numbers: args.get_numbers(),
+        symbols: args.get_symbols(),
+        exclude_ambiguous: args.get_exclude_ambiguous(),
     };
-    println!("{}", password.as_str());
+    let memorable_cfg = MemorableConfig {
+        word_count: args.words,
+        separator: args.separator.clone(),
+        capitalize: args.get_capitalize(),
+        add_numbers: args.get_add_numbers(),
+        truncate: args.get_truncate(),
+    };
+
+    let mut json_items: Vec<String> = Vec::new();
+    for _ in 0..count {
+        let (password, entropy) = match args.mode {
+            ModeArg::Random => {
+                let pw = generate_random(&mut rng, &random_cfg);
+                let e = calculate_entropy(pw.as_str());
+                (pw, e)
+            }
+            ModeArg::Memorable => {
+                let pw = generate_memorable(&mut rng, &memorable_cfg);
+                let e = memorable_entropy(&memorable_cfg);
+                (pw, e)
+            }
+        };
+        if args.json {
+            json_items.push(format!(
+                "  {{\"password\": {}, \"entropy\": {:.1}, \"strength\": {}}}",
+                json_string(password.as_str()),
+                entropy,
+                json_string(strength_label(entropy))
+            ));
+        } else {
+            println!("{}", password.as_str());
+        }
+    }
+
+    if args.json {
+        println!("[\n{}\n]", json_items.join(",\n"));
+    }
+}
+
+// Minimal JSON string encoder (avoids a serde dependency for one field).
+fn json_string(s: &str) -> String {
+    let mut out = String::with_capacity(s.len() + 2);
+    out.push('"');
+    for c in s.chars() {
+        match c {
+            '"' => out.push_str("\\\""),
+            '\\' => out.push_str("\\\\"),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            c if (c as u32) < 0x20 => out.push_str(&format!("\\u{:04x}", c as u32)),
+            c => out.push(c),
+        }
+    }
+    out.push('"');
+    out
 }

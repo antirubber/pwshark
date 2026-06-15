@@ -89,19 +89,29 @@ sha256_of() {
   fi
 }
 
+# Fail closed: a missing checksum or missing sha256 tool aborts the install rather
+# than silently accepting an unverified binary. Set PWSHARK_SKIP_VERIFY=1 to opt out.
 verify_checksum() {
   local file="$1" url="$2"
   local sums expected actual
   sums="$(curl -fsSL "${url}.sha256" 2>/dev/null || true)"
   if [ -z "$sums" ]; then
-    warn "no published checksum for this release — skipping integrity check"
-    return 0
+    if [ "${PWSHARK_SKIP_VERIFY:-}" = "1" ]; then
+      warn "no published checksum — proceeding because PWSHARK_SKIP_VERIFY=1"
+      return 0
+    fi
+    die "no published checksum for this release — refusing to install an unverified binary.
+  To override (not recommended), re-run with PWSHARK_SKIP_VERIFY=1."
   fi
   expected="$(printf '%s' "$sums" | awk '{print $1}')"
   actual="$(sha256_of "$file")"
   if [ -z "$actual" ]; then
-    warn "no sha256 tool found — skipping integrity check"
-    return 0
+    if [ "${PWSHARK_SKIP_VERIFY:-}" = "1" ]; then
+      warn "no sha256 tool found — proceeding because PWSHARK_SKIP_VERIFY=1"
+      return 0
+    fi
+    die "no sha256 tool (sha256sum/shasum) found — cannot verify the download.
+  Install coreutils, or re-run with PWSHARK_SKIP_VERIFY=1 to skip the check."
   fi
   [ "$expected" = "$actual" ] || die "checksum mismatch — refusing to install (expected $expected, got $actual)"
   ok "checksum verified"
@@ -138,8 +148,14 @@ install_binary() {
   if [ "$writable" -eq 1 ]; then
     mv -f "$tmp" "$bindir/$BIN"
   else
-    as_root mv -f "$tmp" "$bindir/$BIN"
-    as_root chmod +x "$bindir/$BIN"
+    # Stage inside $bindir (same filesystem) so the final replace is an atomic
+    # rename. A cross-filesystem mv from /tmp is not atomic and can hit ETXTBSY
+    # when replacing a running binary.
+    local stage="$bindir/.$BIN.new.$$"
+    as_root cp "$tmp" "$stage"
+    as_root chmod +x "$stage"
+    as_root mv -f "$stage" "$bindir/$BIN"
+    rm -f "$tmp" 2>/dev/null || true
   fi
   ok "installed to $bindir/$BIN"
 
@@ -151,7 +167,7 @@ install_binary() {
 
 # --- source-build fallback ------------------------------------------------
 build_from_source() {
-  local bindir="$1"
+  local bindir="$1" version="${2:-}"
   local repo_url="https://github.com/$REPO.git"
   local src_dir="${HOME}/.local/share/pwshark"
 
@@ -175,14 +191,27 @@ build_from_source() {
       warn "could not install build deps — install libxcb1-dev libx11-dev libxkbcommon-dev manually if the build fails"
   fi
 
+  # Build from the exact release tag when we know it, so a force-pushed branch or
+  # tag cannot silently change what gets compiled. Fall back to the default branch
+  # only when no release version is known (e.g. before the first release).
+  local tag=""
+  [ -n "$version" ] && tag="v$version"
   if [ -d "$src_dir/.git" ]; then
     step "Updating source checkout"
-    git -C "$src_dir" fetch --tags --force >/dev/null 2>&1 || true
-    git -C "$src_dir" pull --ff-only
+    git -C "$src_dir" fetch --tags origin >/dev/null 2>&1 || true
+    if [ -n "$tag" ]; then
+      git -C "$src_dir" checkout --quiet "$tag"
+    else
+      git -C "$src_dir" pull --ff-only
+    fi
   else
     step "Cloning $REPO"
     rm -rf "$src_dir"
-    git clone "$repo_url" "$src_dir"
+    if [ -n "$tag" ]; then
+      git clone --quiet --branch "$tag" --depth 1 "$repo_url" "$src_dir"
+    else
+      git clone --quiet "$repo_url" "$src_dir"
+    fi
   fi
 
   step "Building release binary"
@@ -218,7 +247,7 @@ main() {
   if [ -n "$arch" ] && [ -n "$latest" ] && install_binary "$latest" "$arch" "$bindir"; then
     :
   else
-    build_from_source "$bindir"
+    build_from_source "$bindir" "$latest"
   fi
 
   printf '\n'

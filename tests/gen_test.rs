@@ -1,5 +1,5 @@
-use pwshark::gen::{calculate_entropy, generate_memorable, generate_random,
-    strength_label, MemorableConfig, RandomConfig};
+use pwshark::gen::{calculate_entropy, effective_word_pool, generate_memorable, generate_random,
+    memorable_entropy, strength_label, MemorableConfig, RandomConfig};
 
 fn make_rng() -> impl rand::Rng {
     rand::rng()
@@ -14,6 +14,7 @@ fn random_password_has_requested_length() {
         lowercase: true,
         numbers: true,
         symbols: true,
+        exclude_ambiguous: false,
     };
     let pw = generate_random(&mut rng, &cfg);
     assert_eq!(pw.as_str().len(), 20);
@@ -28,6 +29,7 @@ fn random_password_uses_only_enabled_charsets() {
         lowercase: false,
         numbers: false,
         symbols: false,
+        exclude_ambiguous: false,
     };
     let pw = generate_random(&mut rng, &cfg);
     for c in pw.as_str().chars() {
@@ -118,6 +120,58 @@ fn truncate_word_keeps_first_vowel_and_consonants() {
     assert_eq!(truncate_word("seemingly"), "semng");
     assert_eq!(truncate_word("abdominal"), "abdmn");
     assert_eq!(truncate_word("enrage"), "enrg");
+}
+
+#[test]
+fn effective_word_pool_matches_wordlist() {
+    // EFF diceware list has 7776 entries; truncation collapses near-duplicates.
+    assert_eq!(effective_word_pool(false), 7776);
+    let truncated = effective_word_pool(true);
+    assert!(truncated < 7776, "truncation must reduce the pool");
+    assert!(truncated > 6000, "but not collapse it drastically: {truncated}");
+}
+
+#[test]
+fn memorable_entropy_is_realistic_not_charset_inflated() {
+    // The old charset heuristic reported ~140 bits ("Strong") for default 4 words.
+    // Real diceware entropy is ~50-65 bits, so it must land below the Strong cutoff.
+    let cfg = MemorableConfig::default();
+    let e = memorable_entropy(&cfg);
+    assert!(e > 40.0, "4-word passphrase should clear Weak: {e}");
+    assert!(e < 80.0, "4-word passphrase must not read Strong: {e}");
+    assert_ne!(strength_label(e), "Strong");
+}
+
+#[test]
+fn memorable_three_words_not_labeled_strong() {
+    let cfg = MemorableConfig { word_count: 3, ..Default::default() };
+    let e = memorable_entropy(&cfg);
+    assert!(e < 80.0, "3-word passphrase must not read Strong: {e}");
+    assert_ne!(strength_label(e), "Strong");
+}
+
+#[test]
+fn memorable_entropy_grows_with_word_count() {
+    let three = memorable_entropy(&MemorableConfig { word_count: 3, ..Default::default() });
+    let seven = memorable_entropy(&MemorableConfig { word_count: 7, ..Default::default() });
+    assert!(seven > three, "more words must mean more entropy");
+}
+
+#[test]
+fn exclude_ambiguous_removes_confusable_chars() {
+    let mut rng = make_rng();
+    let cfg = RandomConfig {
+        length: 64,
+        uppercase: true,
+        lowercase: true,
+        numbers: true,
+        symbols: true,
+        exclude_ambiguous: true,
+    };
+    let pw = generate_random(&mut rng, &cfg);
+    for c in pw.as_str().chars() {
+        assert!(!"0O1lI".contains(c), "ambiguous char leaked: {c}");
+    }
 }
 
 #[test]

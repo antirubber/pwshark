@@ -15,7 +15,7 @@ use std::io;
 use std::time::Duration;
 
 use crate::gen::{
-    calculate_entropy, generate_memorable, generate_random, separator_presets,
+    calculate_entropy, generate_memorable, generate_random, memorable_entropy, separator_presets,
     strength_label, MemorableConfig, Mode, Password, RandomConfig,
 };
 
@@ -58,20 +58,27 @@ impl App {
 
     fn generate(&mut self) {
         let mut rng = rand::rng();
-        let pw = match self.mode {
-            Mode::Random => generate_random(&mut rng, &self.random_cfg),
+        let (pw, entropy) = match self.mode {
+            Mode::Random => {
+                let pw = generate_random(&mut rng, &self.random_cfg);
+                let e = calculate_entropy(pw.as_str());
+                (pw, e)
+            }
             Mode::Memorable => {
                 let sep = self.current_separator();
-                generate_memorable(
+                let pw = generate_memorable(
                     &mut rng,
                     &MemorableConfig {
                         separator: sep,
                         ..self.memorable_cfg.clone()
                     },
-                )
+                );
+                // Diceware entropy is set by word selection, not the rendered charset.
+                let e = memorable_entropy(&self.memorable_cfg);
+                (pw, e)
             }
         };
-        self.entropy = calculate_entropy(pw.as_str());
+        self.entropy = entropy;
         self.password = Some(pw);
     }
 
@@ -103,7 +110,7 @@ impl App {
     }
 
     fn random_option_count(&self) -> usize {
-        5
+        6
     }
 
     fn memorable_option_count(&self) -> usize {
@@ -287,6 +294,10 @@ fn adjust_option(app: &mut App, delta: i8) {
             }
             4 => {
                 app.random_cfg.symbols = !app.random_cfg.symbols;
+                app.generate();
+            }
+            5 => {
+                app.random_cfg.exclude_ambiguous = !app.random_cfg.exclude_ambiguous;
                 app.generate();
             }
             _ => {}
@@ -561,6 +572,7 @@ fn draw_random_options(app: &App) -> Vec<Line<'static>> {
         make_option(focused(2), "Lowercase", check(app.random_cfg.lowercase)),
         make_option(focused(3), "Numbers", check(app.random_cfg.numbers)),
         make_option(focused(4), "Symbols", check(app.random_cfg.symbols)),
+        make_option(focused(5), "No ambiguous", check(app.random_cfg.exclude_ambiguous)),
     ]
 }
 

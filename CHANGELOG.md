@@ -4,6 +4,33 @@ All notable changes to pwshark are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] - 2026-06-15
+
+### Added
+- Memorable mode now reports realistic diceware entropy (word_count × log2 of the
+  effective word pool, accounting for truncation collisions) instead of the
+  charset heuristic — the strength meter no longer reads "Strong" for every
+  passphrase.
+- `--exclude-ambiguous` flag and a Random-mode toggle to drop visually confusable
+  characters (`0 O 1 l I`).
+- `--count N` and `--json` for `--stdout`, for scripting/batch generation.
+
+### Changed
+- `arboard` is built with `default-features = false`, dropping the unused
+  image-codec dependency tree (`image`/`png`/`flate2`/…) — smaller binary and
+  supply-chain surface.
+- `pwshark update` fetches the installer from the latest release asset
+  (`releases/latest/download/install.sh`) instead of the mutable `main` branch.
+
+### Security
+- `install.sh` now **fails closed**: a missing checksum or missing sha256 tool
+  aborts the install (override with `PWSHARK_SKIP_VERIFY=1`).
+- Source-build fallback checks out the exact release tag and no longer uses
+  `git fetch --force`; privileged installs stage the binary on the target
+  filesystem for an atomic replace.
+- CI pins all third-party actions to commit SHAs and gates releases on
+  `cargo audit`.
+
 ## [0.1.1] - 2026-06-04
 
 ### Added
@@ -29,5 +56,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   ratatui TUI, `--stdout` mode, clipboard copy, entropy meter, and embedded
   wordlist.
 
+[0.2.0]: https://github.com/antirubber/pwshark/releases/tag/v0.2.0
 [0.1.1]: https://github.com/antirubber/pwshark/releases/tag/v0.1.1
 [0.1.0]: https://github.com/antirubber/pwshark/releases/tag/v0.1.0

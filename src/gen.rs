@@ -1,10 +1,14 @@
 use rand::Rng;
+use std::sync::OnceLock;
 use zeroize::Zeroize;
 
 const UPPERCASE: &str = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
 const LOWERCASE: &str = "abcdefghijklmnopqrstuvwxyz";
 const NUMBERS: &str = "0123456789";
 const SYMBOLS: &str = "!@#$%^&*()_+-=,.<>?";
+
+// Visually confusable glyphs dropped when `exclude_ambiguous` is set.
+const AMBIGUOUS: &str = "0O1lI";
 
 pub const WORD_LIST: &str = include_str!("../wordlist.txt");
 
@@ -21,6 +25,7 @@ pub struct RandomConfig {
     pub lowercase: bool,
     pub numbers: bool,
     pub symbols: bool,
+    pub exclude_ambiguous: bool,
 }
 
 impl Default for RandomConfig {
@@ -31,6 +36,7 @@ impl Default for RandomConfig {
             lowercase: true,
             numbers: true,
             symbols: true,
+            exclude_ambiguous: false,
         }
     }
 }
@@ -86,6 +92,9 @@ pub fn generate_random(rng: &mut impl Rng, cfg: &RandomConfig) -> Password {
     }
     if charset.is_empty() {
         charset.push_str(LOWERCASE);
+    }
+    if cfg.exclude_ambiguous {
+        charset.retain(|c| !AMBIGUOUS.contains(c));
     }
     let chars: Vec<char> = charset.chars().collect();
     let len = cfg.length.clamp(8, 64) as usize;
@@ -191,6 +200,51 @@ fn apply_random_numbers(rng: &mut impl Rng, password: &str) -> String {
     chars.into_iter().collect()
 }
 
+// Number of distinct words the memorable generator can actually draw. Truncation
+// (truncate_word) collapses near-duplicates ("abdomen"/"abdominal" -> "abdmn"), so
+// the effective alphabet is smaller than the raw line count and entropy with it.
+pub fn effective_word_pool(truncate: bool) -> usize {
+    static FULL: OnceLock<usize> = OnceLock::new();
+    static TRUNCATED: OnceLock<usize> = OnceLock::new();
+    if truncate {
+        *TRUNCATED.get_or_init(|| {
+            WORD_LIST
+                .lines()
+                .filter(|l| !l.trim().is_empty())
+                .map(truncate_word)
+                .collect::<std::collections::HashSet<_>>()
+                .len()
+        })
+    } else {
+        *FULL.get_or_init(|| WORD_LIST.lines().filter(|l| !l.trim().is_empty()).count())
+    }
+}
+
+// Entropy of a diceware passphrase. The charset heuristic in `calculate_entropy`
+// is meaningless here (words are drawn from a finite list, not per-character), so
+// we count the real choices: word_count * log2(pool), plus a deliberately
+// conservative bonus for the random capitalization / digit insertion — those add
+// little next to another word and we under-credit them on purpose.
+pub fn memorable_entropy(cfg: &MemorableConfig) -> f64 {
+    let pool = effective_word_pool(cfg.truncate);
+    if pool == 0 {
+        return 0.0;
+    }
+    let count = cfg.word_count.clamp(3, 8) as f64;
+    let mut bits = count * (pool as f64).log2();
+    if cfg.capitalize {
+        // 1 of {1,2,3} positions capitalized.
+        bits += 3.0_f64.log2();
+    }
+    if cfg.add_numbers {
+        // 1 of {1,2,3} digits, each carrying at least its 0-9 value.
+        bits += 3.0_f64.log2() + 10.0_f64.log2();
+    }
+    bits
+}
+
+// Charset-based entropy for RANDOM mode only (each position is an independent
+// uniform draw from the pool). Do NOT use for memorable mode — see memorable_entropy.
 pub fn calculate_entropy(password: &str) -> f64 {
     if password.is_empty() {
         return 0.0;

@@ -9,9 +9,10 @@ NIST-compliant password generator. btop-style TUI. Offline. Lightning fast.
 - **Two modes** — Random (charset-based) and Memorable (word-based passphrases)
 - **NIST SP 800-90A** — CSPRNG for all random values
 - **NIST SP 800-63B** — 8–64 char range, no forced composition rules
-- **Word truncation** — keeps first vowel + consonants ≤5 chars (e.g. "seemingly" → "semln")
+- **Word truncation** — keeps first vowel + consonants ≤5 chars (e.g. "seemingly" → "semng")
 - **EFF large diceware** — 7,776 word list embedded in binary
-- **Entropy gauge** — Shannon entropy in bits with strength label
+- **Mode-aware entropy** — charset entropy for random mode, real diceware entropy
+  (word count × pool size, adjusted for truncation collisions) for memorable mode
 - **Color-coded output** — uppercase bright, lowercase dim, numbers orange, symbols blue
 - **Clipboard auto-clear** — copies and clears after 15 seconds
 - **Pipe mode** — `--stdout` for scripting
@@ -99,6 +100,15 @@ pwshark --stdout --mode memorable --words 8 --separator . --no-truncate
 # Random 32-char, no symbols
 pwshark --stdout --length 32 --no-symbols
 
+# Random, excluding visually ambiguous characters (0 O 1 l I)
+pwshark --stdout --exclude-ambiguous
+
+# Generate 10 at once
+pwshark --stdout --count 10
+
+# JSON output for scripting (array of {password, entropy, strength})
+pwshark --stdout --count 5 --json
+
 # Copy directly to clipboard (Linux)
 pwshark --stdout | xclip -selection clipboard
 ```
@@ -107,6 +117,8 @@ pwshark --stdout | xclip -selection clipboard
 
 ```
 --stdout                 Output raw password to stdout (no TUI)
+--count <N>              Number of passwords to generate, stdout mode [default: 1]
+--json                   Emit JSON (stdout mode): array of {password, entropy, strength}
 --mode <MODE>            random | memorable [default: random]
 --length <N>             Password length, random mode [default: 16]
 --words <N>              Word count, memorable mode [default: 4]
@@ -115,6 +127,7 @@ pwshark --stdout | xclip -selection clipboard
 --lowercase              Include lowercase (default: on)
 --numbers                Include numbers (default: on)
 --symbols                Include symbols (default: on)
+--exclude-ambiguous      Drop visually ambiguous chars 0 O 1 l I, random mode (default: off)
 --capitalize             Random capitalization, memorable mode (default: on)
 --add-numbers            Add random numbers, memorable mode (default: on)
 --truncate               Truncate words ≤5 chars (default: on)
